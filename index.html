@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2b2b2b">
+<title>Pocket Web Arcade — GB/GBC</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin:0; width:100%; height:100%; overflow:hidden; background:#1a1a1a; color:#eee; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  body { display:flex; justify-content:center; align-items:stretch; }
+  #app-container {
+    width:100%; max-width:500px; height:100%; height:100dvh; min-height:0;
+    display:flex; flex-direction:column; overflow:hidden;
+    padding-top:env(safe-area-inset-top); padding-bottom:env(safe-area-inset-bottom);
+    background:#2b2b2b;
+  }
+  #screen-area {
+    flex: 4 1 0; min-height:0; width:100%; padding:10px;
+    background:#000; display:flex; align-items:stretch; justify-content:center;
+  }
+  #emulator { width:100%; height:100%; min-height:0; background:#000; overflow:hidden; position:relative; }
+  #emulator iframe { display:block; width:100%; height:100%; border:0; background:#000; }
+  #placeholder { width:100%; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; color:#aab0a8; text-align:center; padding:16px; }
+  #placeholder strong { color:#dce7d2; letter-spacing:2px; font-size:14px; }
+  #placeholder small { font-size:12px; line-height:1.6; }
+  #pad-area {
+    flex:6 1 0; min-height:0; width:100%; background:#c2c3c7; color:#333;
+    border-top:6px solid #4a4a4a; position:relative; box-shadow:inset 0 10px 20px rgba(0,0,0,.2);
+    padding:64px 16px 16px; display:flex; flex-direction:column; align-items:center;
+  }
+  #cartridge-slot {
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    width:70%; min-height:34px; padding:8px 10px; border:0; border-radius:4px;
+    background:#4a4a4a; border-bottom:3px solid #333; color:#ddd;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    font-size:11px; font-weight:800; letter-spacing:1px; text-align:center;
+    box-shadow:inset 0 3px 5px rgba(0,0,0,.6); cursor:pointer; overflow:hidden;
+  }
+  #cartridge-slot.loaded { color:#4af3a0; border-bottom-color:#27ae60; }
+  #rom-file { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+  #status { width:100%; min-height:34px; margin:0 0 12px; color:#30333a; text-align:center; font-size:12px; line-height:1.45; overflow-wrap:anywhere; }
+  #status.error { color:#a32121; font-weight:700; }
+  #controls-hint { font-size:10px; color:#555b63; margin-top:auto; text-align:center; padding:8px 0 0; }
+  .fake-controls { width:100%; max-width:360px; flex:1; min-height:0; display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:12px; }
+  .dpad { width:min(36vw,145px); height:min(36vw,145px); max-height:100%; max-width:100%; position:relative; justify-self:center; }
+  .dpad button { position:absolute; border:0; background:#34363b; color:#cfd0d4; box-shadow:inset 0 -4px 0 #202125; border-radius:5px; }
+  .dpad .up,.dpad .down { width:34%; height:40%; left:33%; }
+  .dpad .up { top:0; } .dpad .down { bottom:0; }
+  .dpad .left,.dpad .right { height:34%; width:40%; top:33%; }
+  .dpad .left { left:0; } .dpad .right { right:0; }
+  .dpad .center { position:absolute; left:34%; top:34%; width:32%; height:32%; background:#34363b; box-shadow:none; }
+  .ab { width:min(36vw,145px); height:min(36vw,145px); max-height:100%; max-width:100%; position:relative; justify-self:center; }
+  .action { position:absolute; width:42%; height:42%; border:0; border-radius:50%; color:white; font-size:clamp(16px,5vw,24px); font-weight:900; box-shadow:inset 0 -5px 0 rgba(0,0,0,.25),0 2px 3px #777; }
+  #btn-b { left:0; top:30%; background:#e74c3c; } #btn-a { right:0; top:10%; background:#5969b4; }
+  .meta-buttons { display:flex; gap:24px; margin:8px 0 0; }
+  .meta-buttons button { border:0; border-radius:20px; background:#55565c; color:#eee; padding:9px 22px; font-size:10px; font-weight:800; letter-spacing:1px; transform:rotate(-12deg); box-shadow:0 3px 0 #333; }
+  .meta-buttons button:active,.dpad button:active,.action:active { filter:brightness(1.25); transform:translateY(1px); }
+  @media (max-height:650px) {
+    #screen-area { flex: 4 1 0; padding:6px; }
+    #pad-area { flex:6 1 0; padding:54px 10px 8px; }
+    #cartridge-slot { top:9px; min-height:30px; }
+    #status { margin-bottom:4px; min-height:24px; font-size:10px; }
+    .fake-controls { max-width:300px; }
+    .dpad,.ab { width:min(29vw,112px); height:min(29vw,112px); }
+    .meta-buttons { margin-top:3px; }
+  }
+</style>
+</head>
+<body>
+<div id="app-container">
+  <section id="screen-area" aria-label="ゲーム画面">
+    <div id="emulator">
+      <div id="placeholder">
+        <strong>POCKET WEB ARCADE</strong>
+        <small>カセットを選択すると、ここでゲームが起動します。<br>GB / GBC ROM 対応</small>
+      </div>
+    </div>
+  </section>
+  <section id="pad-area" aria-label="コントローラー">
+    <label id="cartridge-slot" for="rom-file">＋ INSERT CARTRIDGE</label>
+    <input type="file" id="rom-file" accept=".gb,.gbc,application/octet-stream">
+    <div id="status" role="status" aria-live="polite">オンラインのエミュレータエンジンを使用します。ROMはこの端末から読み込みます。※安定動作にはHTTPS配信を推奨</div>
+    <div class="fake-controls" aria-label="画面上のコントローラー（EmulatorJS標準操作を使用）">
+      <div class="dpad" aria-hidden="true">
+        <button class="up" tabindex="-1">▲</button><button class="down" tabindex="-1">▼</button>
+        <button class="left" tabindex="-1">◀</button><button class="right" tabindex="-1">▶</button><button class="center" tabindex="-1"></button>
+      </div>
+      <div class="ab" aria-hidden="true">
+        <button class="action" id="btn-b" tabindex="-1">B</button><button class="action" id="btn-a" tabindex="-1">A</button>
+      </div>
+    </div>
+    <div class="meta-buttons" aria-hidden="true"><button tabindex="-1">SELECT</button><button tabindex="-1">START</button></div>
+    <div id="controls-hint">操作ボタンはエミュレータ画面内のタッチUIを使用します</div>
+  </section>
+</div>
+<script>
+(() => {
+  const fileInput = document.getElementById('rom-file');
+  const slot = document.getElementById('cartridge-slot');
+  const status = document.getElementById('status');
+  const emulator = document.getElementById('emulator');
+  let currentRomUrl = null;
+  let loadToken = 0;
+  let startupTimer = null;
+
+  function setStatus(message, isError = false) {
+    status.textContent = message;
+    status.classList.toggle('error', isError);
+  }
+  function safeName(name) {
+    return name.replace(/[<>&"']/g, '').slice(0, 80) || 'Game Boy Game';
+  }
+  function clearPreviousEmulator() {
+    if (startupTimer) { clearTimeout(startupTimer); startupTimer = null; }
+    // EmulatorJSはページ全体のDOMを変更するため、必ず専用iframe内で動かす。
+    emulator.replaceChildren();
+  }
+  function sendFrameMessage(frame, type, detail) {
+    try { frame.contentWindow.postMessage({ pocketArcade: true, type, detail }, '*'); } catch (_) {}
+  }
+
+  fileInput.addEventListener('change', async (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const extension = file.name.split('.').pop().toLowerCase();
+    if (!['gb', 'gbc'].includes(extension)) {
+      setStatus('GB / GBC の .gb または .gbc ファイルを選んでください。', true);
+      fileInput.value = '';
+      return;
+    }
+    if (file.size < 0x150) {
+      setStatus('ROMファイルが小さすぎます。ファイルが正しいか確認してください。', true);
+      fileInput.value = '';
+      return;
+    }
+
+    const thisLoad = ++loadToken;
+    slot.textContent = 'LOADING GAME...';
+    slot.classList.add('loaded');
+    setStatus('ROMを読み込んでいます…');
+    try {
+      const bytes = await file.arrayBuffer();
+      if (thisLoad !== loadToken) return;
+      clearPreviousEmulator();
+      if (currentRomUrl) { URL.revokeObjectURL(currentRomUrl); currentRomUrl = null; }
+
+      // content:// でHTMLを開いた場合、親ページで作った blob: URL が
+      // iframe 側から読めず初期化が止まることがあるため、ROMをdata URLで渡す。
+      const u8 = new Uint8Array(bytes);
+      let binary = '';
+      const chunkSize = 0x8000;
+      for (let i = 0; i < u8.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, u8.subarray(i, i + chunkSize));
+      }
+      const romDataUrl = 'data:application/octet-stream;base64,' + btoa(binary);
+
+      const frame = document.createElement('iframe');
+      frame.title = 'EmulatorJS Game Boy emulator';
+      frame.setAttribute('allow', 'autoplay; fullscreen; gamepad');
+      frame.setAttribute('allowfullscreen', '');
+      // 外部CDNのサブリソース取得を妨げないよう、iframeにno-referrerを強制しない。
+      frame.style.cssText = 'display:block;width:100%;height:100%;border:0;background:#000';
+      emulator.appendChild(frame);
+
+      // srcdoc内でEJS設定を先に定義してからloader.jsを読み込む。
+      // srcdocは親と同じオリジンを継承するため、親で作ったblob: ROM URLを渡せる。
+      const romUrl = JSON.stringify(romDataUrl);
+      const gameName = JSON.stringify(safeName(file.name.replace(/\.(gb|gbc)$/i, '')));
+      const dataPath = JSON.stringify('https://cdn.emulatorjs.org/stable/data/');
+      frame.srcdoc = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>html,body,#game{margin:0;width:100%;height:100%;overflow:hidden;background:#000}body{color:#ddd;font:14px sans-serif}#boot{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:16px;box-sizing:border-box;background:#000;color:#bbb;z-index:0}</style></head><body><div id="boot">EmulatorJSを起動しています…<br>初回は少し時間がかかる場合があります。</div><div id="game" style="width:100%;height:100%;background:#000;position:relative;z-index:1"></div><script>
+(function(){
+  function report(type, detail){ parent.postMessage({pocketArcade:true,type:type,detail:String(detail||'')}, '*'); }
+  window.addEventListener('error', function(e){ report('frame-error', e.message || 'JavaScript error'); });
+  window.addEventListener('unhandledrejection', function(e){ report('frame-error', e.reason && (e.reason.message || String(e.reason)) || 'Unhandled promise rejection'); });
+  window.EJS_player = '#game';
+  window.EJS_core = 'gb';
+  window.EJS_gameUrl = ${romUrl};
+  window.EJS_gameName = ${gameName};
+  window.EJS_pathtodata = ${dataPath};
+  window.EJS_language = 'ja-JP';
+  window.EJS_startOnLoaded = true;
+  window.EJS_volume = 0.6;
+  window.EJS_backgroundColor = '#000';
+  window.EJS_disableAutoLang = true;
+  window.EJS_onLoad = function(){ var b=document.getElementById('boot'); if(b)b.style.display='none'; report('engine-ready','EmulatorJS本体の初期化が完了しました。ゲーム起動を待っています。'); };
+  window.EJS_onGameStart = function(){ var b=document.getElementById('boot'); if(b)b.style.display='none'; report('game-start','ゲーム起動を確認しました。'); };
+  window.EJS_onSaveState = function(){ report('save-event','セーブ処理が実行されました。'); };
+  window.addEventListener('error', function(e){
+    var target = e.target;
+    if (target && (target.src || target.href)) report('resource-error','読み込み失敗: ' + (target.src || target.href));
+    else report('frame-error', e.message || 'iframe内JavaScriptエラー');
+  }, true);
+  window.addEventListener('unhandledrejection', function(e){
+    report('frame-error','初期化エラー: ' + (e.reason && (e.reason.message || String(e.reason)) || 'Promise rejection'));
+  });
+  report('loader-start','EmulatorJSのloader.jsを読み込んでいます…');
+  var s=document.createElement('script'); s.src='https://cdn.emulatorjs.org/stable/data/loader.js'; s.async=true;
+  s.onload=function(){ report('loader-loaded','loader.js取得完了。現在、コアと画面エンジンを初期化しています…'); };
+  s.onerror=function(){ report('loader-error','loader.jsの取得に失敗しました。通信またはCDN接続を確認してください。'); };
+  document.body.appendChild(s);
+})();
+<\/script></body></html>`;
+
+      slot.textContent = safeName(file.name).toUpperCase().slice(0, 22);
+      setStatus('エミュレータを起動しています…');
+      startupTimer = setTimeout(() => {
+        if (thisLoad !== loadToken) return;
+        setStatus('初期化が60秒でタイムアウトしました。下の診断表示を確認してください。CDNからのコア取得、ブラウザの通信制限、ROM形式のいずれかで停止している可能性があります。', true);
+      }, 60000);
+      fileInput.value = '';
+    } catch (error) {
+      console.error(error);
+      slot.textContent = 'LOAD FAILED';
+      slot.classList.remove('loaded');
+      setStatus('ROMの読み込みに失敗しました: ' + (error.message || error), true);
+    }
+  });
+
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || data.pocketArcade !== true) return;
+    if (data.type === 'loader-start') setStatus(data.detail || 'エンジンを起動しています…');
+    else if (data.type === 'loader-loaded') setStatus(data.detail || 'エンジン取得完了。初期化中…');
+    else if (data.type === 'engine-ready') setStatus(data.detail || 'エミュレータ本体の初期化完了。');
+    else if (data.type === 'game-start') { if (startupTimer) clearTimeout(startupTimer); startupTimer = null; setStatus('ゲーム起動を確認しました。音声が出ない場合は画面を一度タップしてください。'); }
+    else if (data.type === 'save-event') setStatus('セーブ処理を検出しました。');
+    else if (data.type === 'loader-error' || data.type === 'resource-error') { if (startupTimer) clearTimeout(startupTimer); startupTimer = null; slot.textContent = 'LOAD FAILED'; slot.classList.remove('loaded'); setStatus(data.detail, true); }
+    else if (data.type === 'frame-error') setStatus('エミュレータ内部エラー: ' + data.detail, true);
+  });
+
+  window.addEventListener('error', (event) => {
+    setStatus('ページ側のJavaScriptエラー: ' + (event.message || '詳細不明'), true);
+  });
+  window.addEventListener('beforeunload', () => {
+    if (startupTimer) clearTimeout(startupTimer);
+    if (currentRomUrl) URL.revokeObjectURL(currentRomUrl);
+  });
+})();
+</script>
+</body>
+</html>
